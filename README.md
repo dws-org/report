@@ -128,70 +128,67 @@ GitHub Actions (CI)
 
 ## Testing and Monitoring
 
-# Database
+# Database Model
 
-### Prisma Schema Event Service
+## Overview
 
-```
-model Event {
-  id        String    @id @default(cuid())
-  title     String
-  description String?
-  startDate DateTime
-  endDate   DateTime
-  location  String?
-  capacity  Int?
-  status    EventStatus @default(ACTIVE)
+Schema-based multi-tenancy on a single PostgreSQL instance:
 
-  tickets   Ticket[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+- `public` – Event Management
+- `tickets` – Ticket Management
 
-enum EventStatus {
-  DRAFT
-  ACTIVE
-  CANCELLED
-  COMPLETED
-}
+---
 
-model Ticket {
-  id        String    @id @default(cuid())
-  eventId   String
-  event     Event     @relation(fields:  [eventId], references: [id])
-  userId    String
+## public.Event
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | TEXT | PK |
+| name | TEXT |  |
+| description | TEXT |  |
+| date | TIMESTAMP |  |
+| location | TEXT |  |
+| capacity | INTEGER |  |
+| organizerId | TEXT | FK → Organizer.id |
+| status | TEXT | planned | ongoing | completed | cancelled |
+| createdAt | TIMESTAMP |  |
+| updatedAt | TIMESTAMP |  |
 
-```
+---
 
-### Prisma Schema Ticket Service
+## public.Organizer
 
-```
-model Ticket {
-  id        String    @id @default(cuid())
-  eventId   String
-  userId    String
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | TEXT | PK |
+| name | TEXT |  |
+| email | TEXT |  |
+| phone | TEXT |  |
+| address | TEXT |  |
+| createdAt | TIMESTAMP |  |
+| updatedAt | TIMESTAMP |  |
 
-  status    TicketStatus @default(PURCHASED)
-  price     Decimal
+---
 
-  paymentId String?
+## tickets.Tickets
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | TEXT | PK |
+| userId | TEXT |  |
+| eventId | TEXT | FK → public.Event.id |
+| quantity | INTEGER |  |
+| totalPrice | NUMERIC(65,30) |  |
+| status | TEXT | pending | confirmed | cancelled | used |
+| createdAt | TIMESTAMP |  |
+| updatedAt | TIMESTAMP |  |
 
-enum TicketStatus {
-  PURCHASED
-  USED
-  CANCELLED
-  REFUNDED
-}
+---
 
-```
+## Relationships
+
+- Organizer 1 — N Event
+- Event 1 — N Tickets
 
 # Deployment
 
@@ -285,3 +282,105 @@ keycloak.init({ onLoad: 'login-required' }).then(() => {
 });
 
 ```
+
+### SQL Injection Protection
+
+**Implementation:**
+Our project is protected against SQL injection attacks through the use of **Prisma ORM**. Prisma automatically uses parameterized queries (prepared statements) which separate SQL code from user input data. This is the industry-standard defense against SQL injection.
+
+**How it works:**
+
+- All database queries are constructed through Prisma's type-safe API
+- User input is never directly concatenated into SQL queries
+- Parameters are automatically escaped and validated
+- Example of safe query:
+
+```go
+// User input is safely parameterized
+event, err := prisma.Event.FindUnique(
+  db.Event.ID.Equals(userProvidedID),
+).Exec(ctx)
+
+```
+
+**Why we're protected:**
+
+- Prisma translates our Go code to SQL with proper parameterization
+- Even if `userProvidedID` contains malicious SQL, it's treated as a data value, not executable code
+- No string concatenation or user input directly in queries
+
+---
+
+### XSS (Cross-Site Scripting) Protection
+
+**Implementation:**
+Our project is protected against XSS attacks through **React's built-in security features** in the Next.js frontend. React automatically escapes all user-generated content by default.
+
+**How it works:**
+
+- React treats all content as text by default, not HTML
+- Special characters (`<`, `>`, `&`, etc.) are automatically HTML-escaped
+- User input rendered in JSX is safe from script injection
+- Example of safe rendering:
+
+```jsx
+// Even if userComment contains "<script>alert('xss')</script>",
+// React will display it as plain text, not execute it
+<div>{userComment}</div>
+// Renders as: &lt;script&gt;alert('xss')&lt;/script&gt;
+
+```
+
+**Additional protections:**
+
+- We avoid using `dangerouslySetInnerHTML` with unsanitized content
+- Input validation on both frontend and backend
+- Content Security Policy (CSP) headers could be added for additional defense
+
+**Why we're protected:**
+
+- React's default behavior is to escape content
+- Users cannot inject executable scripts through normal data fields
+- Even if malicious input reaches the frontend, it's rendered as harmless text
+
+## Certificate Management and Automatic Renewal
+
+Our project uses **cert-manager** with **Let's Encrypt** to automatically manage SSL/TLS certificates for all external communications. This ensures that HTTPS certificates are provisioned and renewed without manual intervention.
+
+### Implementation
+
+The cluster runs cert-manager to manage certificates through Let's Encrypt's ACME protocol. We have configured a production ClusterIssuer (`letsencrypt-prod`) that validates domain ownership using HTTP-01 challenges with our Traefik Ingress Controller. The ClusterIssuer is registered  and maintains an account with Let's Encrypt.
+
+Currently, the following services are protected with valid TLS certificates: ArgoCD, Frontend, Keycloak, Grafana, and Prometheus. All certificates show Ready status and are actively serving HTTPS traffic.
+
+### Automatic Renewal Process
+
+Let's Encrypt certificates are valid for 90 days. cert-manager continuously monitors certificate expiration and automatically requests new certificates 30 days before expiration. This happens entirely in the background without any service downtime. When a certificate is renewed, it's automatically stored in the corresponding Kubernetes Secret and the Ingress controller picks up the new certificate transparently.
+
+# GDPR Compliance and Data Privacy Measures
+
+### Data Collection & Storage
+
+Our application follows the principle of data minimization by collecting only essential information needed for event management functionality. User personal data (email, name, authentication details) is managed exclusively by **Keycloak**, our dedicated identity provider. Our application database only stores event-related information (event details, organizer IDs) and does not replicate personal user data.
+
+This separation of concerns ensures that sensitive personal information is handled by a specialized system (Keycloak) rather than distributed across multiple services, reducing the overall data handling footprint.
+
+### Authentication & Access Control
+
+All API endpoints require authentication through Keycloak, ensuring that only registered users can access the system. The application implements role-based access control where only users with the "Organiser" role can create events. Users cannot access or view other users' personal profiles—the system only exposes event data, not user directories or contact information.
+
+### User Rights
+
+**Right to be Forgotten:** Keycloak has "User-managed access" enabled, which allows users to manage and delete their own accounts directly through the Keycloak user portal. Users can export their account data and request account deletion without administrator intervention.
+
+### Data Protection in Transit
+
+All communications between client and server are encrypted using HTTPS/TLS. Certificate management is automated through Let's Encrypt and cert-manager, ensuring encryption certificates are continuously valid and renewed automatically.
+
+### Current Limitations & Future Improvements
+
+The following could be added in future versions:
+
+- Explicit consent banner for data processing
+- Formal privacy policy documentation
+- Application-level data export functionality (currently only available in Keycloak)
