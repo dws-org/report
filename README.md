@@ -1,5 +1,11 @@
 # Project Report
 
+# Distribuation Accross all of us
+
+Lea: Frontend, Event-Service inkl. Tests, GitOps annd Kubernets, Dokumentation 
+Till: Ticket Service inkl. Tests, GitOps annd Kubernetes, Monitoring 
+Oskar: Keycloak 
+
 # Motivation
 
 We have built an application that allows organizations, such as student associations, to sell tickets to students. Users can log in, view available events, and purchase tickets. Organizers can also log in, where they have the option to manage existing events and create new ones. 
