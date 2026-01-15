@@ -2,9 +2,9 @@
 
 # Distribuation Accross all of us
 
-Lea: Frontend, Event-Service inkl. Tests, GitOps annd Kubernets, Dokumentation 
-Till: Ticket Service inkl. Tests, GitOps annd Kubernetes, Monitoring 
-Oskar: Keycloak 
+- Lea: Frontend, Event-Service, GitOps annd Kubernets, Dokumentation 
+- Till: Ticket Service inkl. Tests, GitOps and Kubernetes, Monitoring 
+- Oskar: Keycloak, Database
 
 # Motivation
 
